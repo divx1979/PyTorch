@@ -1,2 +1,2 @@
 # PyTorch
-PyTorch DL
+PyTorch Course Deepleearning.ai
