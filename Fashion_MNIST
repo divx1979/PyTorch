@@ -1,1 +1,1062 @@
-{"metadata":{"kernelspec":{"language":"python","display_name":"Python 3","name":"python3"},"language_info":{"name":"python","version":"3.12.12","mimetype":"text/x-python","codemirror_mode":{"name":"ipython","version":3},"pygments_lexer":"ipython3","nbconvert_exporter":"python","file_extension":".py"},"kaggle":{"accelerator":"gpu","dataSources":[{"sourceId":14209643,"sourceType":"datasetVersion","datasetId":9063561}],"dockerImageVersionId":31236,"isInternetEnabled":true,"language":"python","sourceType":"notebook","isGpuEnabled":true}},"nbformat_minor":4,"nbformat":4,"cells":[{"cell_type":"code","source":"# This Python 3 environment comes with many helpful analytics libraries installed\n# It is defined by the kaggle/python Docker image: https://github.com/kaggle/docker-python\n# For example, here's several helpful packages to load\n\nimport numpy as np # linear algebra\nimport pandas as pd # data processing, CSV file I/O (e.g. pd.read_csv)\n\n# Input data files are available in the read-only \"../input/\" directory\n# For example, running this (by clicking run or pressing Shift+Enter) will list all files under the input directory\n\nimport os\nfor dirname, _, filenames in os.walk('/kaggle/input'):\n    for filename in filenames:\n        print(os.path.join(dirname, filename))\n\n# You can write up to 20GB to the current directory (/kaggle/working/) that gets preserved as output when you create a version using \"Save & Run All\" \n# You can also write temporary files to /kaggle/temp/, but they won't be saved outside of the current session","metadata":{"_uuid":"8f2839f25d086af736a60e9eeb907d3b93b6e0e5","_cell_guid":"b1076dfc-b9ad-4769-8c92-a6c4dae69d19","trusted":true,"execution":{"iopub.status.busy":"2025-12-18T10:48:34.388619Z","iopub.execute_input":"2025-12-18T10:48:34.389314Z","iopub.status.idle":"2025-12-18T10:48:34.398872Z","shell.execute_reply.started":"2025-12-18T10:48:34.389284Z","shell.execute_reply":"2025-12-18T10:48:34.398141Z"}},"outputs":[{"name":"stdout","text":"/kaggle/input/help-utilities/helper_utils2.py\n","output_type":"stream"}],"execution_count":19},{"cell_type":"markdown","source":"# Fashion-MNIST From Scratch\n\n**Project Goal (Crystal Clear)**\n\nBuild a robust CNN for Fashion-MNIST that:\n\t\n    •\tTrains correctly\n\t•\tIs easy to debug\n\t•\tHas clean modular structure\n\t•\tProduces inspectable results\n\t•\tCan be extended to any image datase","metadata":{}},{"cell_type":"markdown","source":"# Phase 1 — Data Sanity (Never Skip This)\n\nLoad Datase**","metadata":{}},{"cell_type":"code","source":"import numpy as np\nimport sys, os","metadata":{"trusted":true,"execution":{"iopub.status.busy":"2025-12-18T10:48:34.400898Z","iopub.execute_input":"2025-12-18T10:48:34.401160Z","iopub.status.idle":"2025-12-18T10:48:34.412084Z","shell.execute_reply.started":"2025-12-18T10:48:34.401138Z","shell.execute_reply":"2025-12-18T10:48:34.411354Z"}},"outputs":[],"execution_count":20},{"cell_type":"code","source":"import sys\nsys.path.append('/kaggle/input/help-utilities')","metadata":{"trusted":true,"execution":{"iopub.status.busy":"2025-12-18T10:48:34.413061Z","iopub.execute_input":"2025-12-18T10:48:34.413659Z","iopub.status.idle":"2025-12-18T10:48:34.424184Z","shell.execute_reply.started":"2025-12-18T10:48:34.413636Z","shell.execute_reply":"2025-12-18T10:48:34.423430Z"}},"outputs":[],"execution_count":21},{"cell_type":"code","source":"import torch\nfrom torchvision import datasets, transforms\nfrom torch.utils.data import DataLoader\n\nimport helper_utils2\n\ntransform = transforms.ToTensor()\n\ntrain_dataset = datasets.FashionMNIST(\n    root=\"data\",\n    train=True,\n    download=True,\n    transform=transform\n)\n\ntest_dataset = datasets.FashionMNIST(\n    root=\"data\",\n    train=False,\n    download=True,\n    transform=transform\n)","metadata":{"trusted":true,"execution":{"iopub.status.busy":"2025-12-18T10:48:34.425108Z","iopub.execute_input":"2025-12-18T10:48:34.425332Z","iopub.status.idle":"2025-12-18T10:48:34.513184Z","shell.execute_reply.started":"2025-12-18T10:48:34.425312Z","shell.execute_reply":"2025-12-18T10:48:34.512442Z"}},"outputs":[],"execution_count":22},{"cell_type":"markdown","source":"**DataLoader**","metadata":{}},{"cell_type":"code","source":"batch_size = 64\n\ntrain_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)\ntest_loader  = DataLoader(test_dataset,  batch_size=batch_size, shuffle=False)","metadata":{"trusted":true,"execution":{"iopub.status.busy":"2025-12-18T10:48:34.514903Z","iopub.execute_input":"2025-12-18T10:48:34.515129Z","iopub.status.idle":"2025-12-18T10:48:34.521740Z","shell.execute_reply.started":"2025-12-18T10:48:34.515108Z","shell.execute_reply":"2025-12-18T10:48:34.521147Z"}},"outputs":[],"execution_count":23},{"cell_type":"markdown","source":"Immediate Sanity Check ","metadata":{}},{"cell_type":"code","source":"imgs, labels = next(iter(train_loader))\nprint(imgs.shape, labels.shape)","metadata":{"trusted":true,"execution":{"iopub.status.busy":"2025-12-18T10:48:34.522470Z","iopub.execute_input":"2025-12-18T10:48:34.522712Z","iopub.status.idle":"2025-12-18T10:48:34.546859Z","shell.execute_reply.started":"2025-12-18T10:48:34.522672Z","shell.execute_reply":"2025-12-18T10:48:34.546306Z"}},"outputs":[{"name":"stdout","text":"torch.Size([64, 1, 28, 28]) torch.Size([64])\n","output_type":"stream"}],"execution_count":24},{"cell_type":"markdown","source":"# Phase 2 — Build the Model (Modular First)\n\n**CNN Architectur**","metadata":{}},{"cell_type":"code","source":"import torch.nn as nn\n\nclass FashionCNN(nn.Module):\n    def __init__(self):\n        super().__init__()\n\n        self.conv_block = nn.Sequential(\n            nn.Conv2d(1, 32, kernel_size=3, padding=1),\n            nn.ReLU(),\n            nn.MaxPool2d(2),\n\n            nn.Conv2d(32, 64, kernel_size=3, padding=1),\n            nn.ReLU(),\n            nn.MaxPool2d(2)\n        )\n\n        self.fc_block = nn.Sequential(\n            nn.Linear(64 * 7 * 7, 128),\n            nn.ReLU(),\n            nn.Dropout(0.3),\n            nn.Linear(128, 10)\n        )\n\n    def forward(self, x):\n        x = self.conv_block(x)\n        x = torch.flatten(x, start_dim=1)\n        x = self.fc_block(x)\n        return x","metadata":{"trusted":true,"execution":{"iopub.status.busy":"2025-12-18T10:48:34.547670Z","iopub.execute_input":"2025-12-18T10:48:34.547961Z","iopub.status.idle":"2025-12-18T10:48:34.553467Z","shell.execute_reply.started":"2025-12-18T10:48:34.547931Z","shell.execute_reply":"2025-12-18T10:48:34.552876Z"}},"outputs":[],"execution_count":25},{"cell_type":"markdown","source":"Phase 3 — Debug the Forward Pass (ON PURPOSE)","metadata":{}},{"cell_type":"code","source":"class DebugFashionCNN(FashionCNN):\n    def forward(self, x):\n        print(\"Input:\", x.shape)\n\n        x = self.conv_block(x)\n        print(\"After conv_block:\", x.shape)\n\n        x = torch.flatten(x, 1)\n        print(\"After flatten:\", x.shape)\n\n        x = self.fc_block(x)\n        print(\"Output:\", x.shape)\n\n        return x","metadata":{"trusted":true,"execution":{"iopub.status.busy":"2025-12-18T10:48:34.554138Z","iopub.execute_input":"2025-12-18T10:48:34.554349Z","iopub.status.idle":"2025-12-18T10:48:34.569305Z","shell.execute_reply.started":"2025-12-18T10:48:34.554324Z","shell.execute_reply":"2025-12-18T10:48:34.568620Z"}},"outputs":[],"execution_count":26},{"cell_type":"code","source":"debug_model = DebugFashionCNN()\ndebug_model(imgs)","metadata":{"trusted":true,"execution":{"iopub.status.busy":"2025-12-18T10:48:34.570097Z","iopub.execute_input":"2025-12-18T10:48:34.570339Z","iopub.status.idle":"2025-12-18T10:48:34.608284Z","shell.execute_reply.started":"2025-12-18T10:48:34.570312Z","shell.execute_reply":"2025-12-18T10:48:34.607732Z"}},"outputs":[{"name":"stdout","text":"Input: torch.Size([64, 1, 28, 28])\nAfter conv_block: torch.Size([64, 64, 7, 7])\nAfter flatten: torch.Size([64, 3136])\nOutput: torch.Size([64, 10])\n","output_type":"stream"},{"execution_count":27,"output_type":"execute_result","data":{"text/plain":"tensor([[ 0.0174,  0.0969, -0.0549, -0.0195,  0.0144, -0.0455, -0.0636, -0.0086,\n         -0.0898,  0.0968],\n        [ 0.0277,  0.1035, -0.0508, -0.0093, -0.0166, -0.0255, -0.0572, -0.0289,\n         -0.0660,  0.0509],\n        [ 0.0051,  0.1224, -0.0444, -0.0110, -0.0089, -0.0278, -0.0769, -0.0393,\n         -0.0675,  0.0718],\n        [ 0.0193,  0.1084, -0.0286,  0.0004, -0.0323, -0.0210, -0.0665, -0.0307,\n         -0.0671,  0.0718],\n        [ 0.0148,  0.0732, -0.0437,  0.0103, -0.0080, -0.0352, -0.1001, -0.0172,\n         -0.0658,  0.0765],\n        [ 0.0174,  0.1174, -0.0574, -0.0178, -0.0257, -0.0127, -0.0941,  0.0248,\n         -0.0625,  0.0862],\n        [ 0.0096,  0.1040, -0.0167,  0.0414, -0.0145, -0.0375, -0.1101, -0.0456,\n         -0.0863,  0.1129],\n        [-0.0079,  0.1001,  0.0160, -0.0333,  0.0093, -0.1152, -0.0976, -0.0246,\n         -0.0943,  0.0591],\n        [ 0.0254,  0.1003, -0.0178, -0.0376, -0.0160, -0.0336, -0.0893,  0.0290,\n         -0.0301,  0.0889],\n        [ 0.0011,  0.0871, -0.0280, -0.0096, -0.0177, -0.0066, -0.0538, -0.0077,\n         -0.0609,  0.0712],\n        [ 0.0180,  0.1061, -0.0117, -0.0181, -0.0090, -0.0709, -0.0688, -0.0028,\n         -0.0625,  0.0665],\n        [ 0.0147,  0.1016, -0.0005, -0.0038, -0.0051, -0.0871, -0.0743, -0.0004,\n         -0.0818,  0.0891],\n        [-0.0081,  0.1446, -0.0678, -0.0158, -0.0090, -0.0087, -0.0571,  0.0010,\n         -0.0271,  0.0631],\n        [ 0.0084,  0.1157, -0.0497,  0.0227, -0.0192, -0.0521, -0.0649, -0.0090,\n         -0.0658,  0.1023],\n        [-0.0100,  0.0947, -0.0516,  0.0447, -0.0211,  0.0078, -0.0569, -0.0461,\n         -0.0349,  0.0893],\n        [ 0.0101,  0.0991, -0.0735,  0.0276, -0.0051, -0.0368, -0.0915,  0.0043,\n         -0.0654,  0.1004],\n        [ 0.0003,  0.0964,  0.0062, -0.0454,  0.0324, -0.0332, -0.0728, -0.0121,\n         -0.0678,  0.0312],\n        [ 0.0051,  0.1163, -0.0139, -0.0353, -0.0012, -0.1042, -0.1100,  0.0183,\n         -0.0661,  0.1059],\n        [ 0.0155,  0.0995, -0.0298, -0.0109, -0.0397, -0.0144, -0.1137,  0.0099,\n         -0.0472,  0.0966],\n        [ 0.0247,  0.1031,  0.0076,  0.0078, -0.0042, -0.0544, -0.1039, -0.0247,\n         -0.0726,  0.0710],\n        [-0.0050,  0.1146, -0.0069,  0.0146, -0.0123, -0.0127, -0.0856, -0.0383,\n         -0.0600,  0.0568],\n        [-0.0179,  0.1173, -0.0567,  0.0331, -0.0273, -0.0220, -0.0410, -0.0323,\n         -0.0718,  0.0733],\n        [-0.0032,  0.1143, -0.0468,  0.0140, -0.0222, -0.0232, -0.0875, -0.0352,\n         -0.0370,  0.0851],\n        [-0.0216,  0.1150, -0.0615,  0.0334, -0.0090, -0.0060, -0.0737,  0.0093,\n         -0.0189,  0.1023],\n        [ 0.0234,  0.1162, -0.0213,  0.0353, -0.0200, -0.0244, -0.0598, -0.0260,\n         -0.0852,  0.1243],\n        [ 0.0314,  0.1192, -0.0529, -0.0039, -0.0273, -0.0557, -0.0214, -0.0034,\n         -0.0804,  0.0730],\n        [-0.0034,  0.1039, -0.0517, -0.0021,  0.0102, -0.0407, -0.0961, -0.0050,\n         -0.0681,  0.0860],\n        [ 0.0333,  0.1123, -0.0484,  0.0262, -0.0278, -0.0054, -0.0478,  0.0231,\n         -0.0597,  0.1270],\n        [-0.0121,  0.1442, -0.0445, -0.0043,  0.0047, -0.0664, -0.0859, -0.0357,\n         -0.0674,  0.0893],\n        [ 0.0215,  0.1159, -0.0167,  0.0105, -0.0186, -0.0322, -0.0872, -0.0188,\n         -0.0896,  0.0745],\n        [ 0.0158,  0.1057, -0.0362, -0.0142, -0.0101,  0.0080, -0.0899, -0.0141,\n         -0.0548,  0.0879],\n        [-0.0090,  0.1183, -0.0810,  0.0100,  0.0011, -0.0537, -0.0486, -0.0483,\n         -0.0831,  0.0898],\n        [ 0.0091,  0.0960, -0.0271,  0.0319, -0.0090, -0.0365, -0.0956, -0.0019,\n         -0.0614,  0.0820],\n        [ 0.0213,  0.0772,  0.0076, -0.0306,  0.0031, -0.0460, -0.0715, -0.0181,\n         -0.1211,  0.0938],\n        [ 0.0466,  0.0879, -0.0052, -0.0345,  0.0085, -0.0416, -0.0879,  0.0346,\n         -0.0541,  0.0820],\n        [-0.0038,  0.1168, -0.0619,  0.0469, -0.0097, -0.0097, -0.0813,  0.0165,\n          0.0062,  0.1095],\n        [ 0.0050,  0.1069, -0.0349,  0.0122,  0.0094, -0.0497, -0.0738, -0.0435,\n         -0.0719,  0.0904],\n        [ 0.0018,  0.1209, -0.0156, -0.0119, -0.0079, -0.0340, -0.0866, -0.0079,\n         -0.0707,  0.0697],\n        [-0.0086,  0.1033, -0.0782,  0.0234, -0.0374, -0.0073, -0.0904, -0.0384,\n         -0.0592,  0.0806],\n        [ 0.0320,  0.0458,  0.0189, -0.0041, -0.0024, -0.0313, -0.0813, -0.0280,\n         -0.0653,  0.1171],\n        [ 0.0426,  0.1013, -0.0705, -0.0012, -0.0119, -0.0688, -0.1156, -0.0290,\n         -0.0670,  0.1320],\n        [ 0.0009,  0.1267, -0.0366, -0.0002, -0.0225, -0.0417, -0.0949,  0.0119,\n         -0.0864,  0.0780],\n        [ 0.0166,  0.0927, -0.0630, -0.0172, -0.0174, -0.0525, -0.0558, -0.0407,\n         -0.0526,  0.0415],\n        [ 0.0035,  0.0975, -0.0507,  0.0457, -0.0231, -0.0502, -0.0765, -0.0327,\n         -0.0564,  0.0860],\n        [ 0.0714,  0.1044,  0.0037, -0.0005, -0.0317, -0.0866, -0.0483, -0.0137,\n         -0.0978,  0.0857],\n        [ 0.0404,  0.0702, -0.0470, -0.0225, -0.0125, -0.0517, -0.0685,  0.0043,\n         -0.0889,  0.1039],\n        [ 0.0251,  0.0949, -0.0035,  0.0121, -0.0022, -0.0271, -0.0430, -0.0262,\n         -0.0678,  0.0833],\n        [-0.0146,  0.1196, -0.0038, -0.0257,  0.0237, -0.0823, -0.0949,  0.0055,\n         -0.1271,  0.0801],\n        [ 0.0319,  0.0964, -0.0490,  0.0193, -0.0524, -0.0045, -0.0929, -0.0208,\n         -0.0270,  0.0729],\n        [ 0.0505,  0.0982, -0.0586,  0.0151, -0.0222, -0.0820, -0.0700, -0.0501,\n         -0.0852,  0.0893],\n        [ 0.0068,  0.1118, -0.0375,  0.0079,  0.0051, -0.0680, -0.0832, -0.0497,\n         -0.0875,  0.0675],\n        [-0.0006,  0.0991, -0.0509,  0.0447, -0.0013, -0.0582, -0.0635, -0.0327,\n         -0.0181,  0.0845],\n        [ 0.0355,  0.1147, -0.0254,  0.0064, -0.0167, -0.0659, -0.0913, -0.0032,\n         -0.0836,  0.0864],\n        [-0.0068,  0.0967, -0.0181, -0.0077, -0.0068, -0.0505, -0.1043, -0.0080,\n         -0.0712,  0.1008],\n        [ 0.0344,  0.1113,  0.0034, -0.0202, -0.0082, -0.0367, -0.0473, -0.0121,\n         -0.0892,  0.0805],\n        [ 0.0289,  0.1065, -0.0400,  0.0034, -0.0012, -0.0757, -0.0560, -0.0070,\n         -0.0901,  0.0941],\n        [-0.0046,  0.1002, -0.0455,  0.0236, -0.0213, -0.0271, -0.0779, -0.0367,\n         -0.0486,  0.0903],\n        [-0.0124,  0.0869, -0.0269,  0.0247, -0.0167,  0.0025, -0.0756, -0.0561,\n         -0.0480,  0.0586],\n        [ 0.0097,  0.0979, -0.0410,  0.0140, -0.0099, -0.0874, -0.0747, -0.0433,\n         -0.0628,  0.0825],\n        [ 0.0157,  0.1008, -0.0446,  0.0244, -0.0104, -0.0363, -0.0967, -0.0202,\n         -0.0621,  0.0998],\n        [-0.0006,  0.1357, -0.0498,  0.0213, -0.0399, -0.0366, -0.0696,  0.0037,\n         -0.0388,  0.1177],\n        [ 0.0373,  0.0821, -0.0444,  0.0256, -0.0391, -0.0272, -0.0818,  0.0106,\n         -0.0653,  0.0830],\n        [ 0.0360,  0.0999, -0.0432, -0.0014, -0.0319, -0.0604, -0.0639, -0.0138,\n         -0.0796,  0.0588],\n        [ 0.0037,  0.1172, -0.0393,  0.0398, -0.0219, -0.0020, -0.0785, -0.0131,\n         -0.0531,  0.1175]], grad_fn=<AddmmBackward0>)"},"metadata":{}}],"execution_count":27},{"cell_type":"markdown","source":"# Phase 4 — Training Loop (Clean & Explicit\n\n* Setup","metadata":{}},{"cell_type":"code","source":"device = torch.device(\"cuda\" if torch.cuda.is_available() else \"cpu\")\n\nmodel = FashionCNN().to(device)\ncriterion = nn.CrossEntropyLoss()\noptimizer = torch.optim.Adam(model.parameters(), lr=0.001)","metadata":{"trusted":true,"execution":{"iopub.status.busy":"2025-12-18T10:48:34.609045Z","iopub.execute_input":"2025-12-18T10:48:34.609228Z","iopub.status.idle":"2025-12-18T10:48:34.617731Z","shell.execute_reply.started":"2025-12-18T10:48:34.609210Z","shell.execute_reply":"2025-12-18T10:48:34.617160Z"}},"outputs":[],"execution_count":28},{"cell_type":"markdown","source":"**Training Functio**","metadata":{}},{"cell_type":"code","source":"def train_epoch(model, loader):\n    model.train()\n    total_loss = 0\n    correct = 0\n    total = 0\n\n    for imgs, labels in loader:\n        imgs, labels = imgs.to(device), labels.to(device)\n\n        optimizer.zero_grad()\n        outputs = model(imgs)\n        loss = criterion(outputs, labels)\n        loss.backward()\n        optimizer.step()\n\n        total_loss += loss.item()\n        preds = outputs.argmax(dim=1)\n        correct += (preds == labels).sum().item()\n        total += labels.size(0)\n\n    return total_loss / len(loader), 100 * correct / total","metadata":{"trusted":true,"execution":{"iopub.status.busy":"2025-12-18T10:48:34.618538Z","iopub.execute_input":"2025-12-18T10:48:34.618796Z","iopub.status.idle":"2025-12-18T10:48:34.624606Z","shell.execute_reply.started":"2025-12-18T10:48:34.618774Z","shell.execute_reply":"2025-12-18T10:48:34.623881Z"}},"outputs":[],"execution_count":29},{"cell_type":"markdown","source":"# Phase 5 — Evaluation (NO GRADIENTS)","metadata":{}},{"cell_type":"code","source":"def evaluate(model, loader):\n    model.eval()\n    correct = 0\n    total = 0\n\n    with torch.no_grad():\n        for imgs, labels in loader:\n            imgs, labels = imgs.to(device), labels.to(device)\n            outputs = model(imgs)\n            preds = outputs.argmax(dim=1)\n            correct += (preds == labels).sum().item()\n            total += labels.size(0)\n\n    return 100 * correct / total","metadata":{"trusted":true,"execution":{"iopub.status.busy":"2025-12-18T10:48:34.625456Z","iopub.execute_input":"2025-12-18T10:48:34.625815Z","iopub.status.idle":"2025-12-18T10:48:34.638068Z","shell.execute_reply.started":"2025-12-18T10:48:34.625786Z","shell.execute_reply":"2025-12-18T10:48:34.637423Z"}},"outputs":[],"execution_count":30},{"cell_type":"markdown","source":"# Phase 6 — Train & Observe Like an Engineer","metadata":{}},{"cell_type":"code","source":"epochs = 5\n\nfor epoch in range(epochs):\n    train_loss, train_acc = train_epoch(model, train_loader)\n    test_acc = evaluate(model, test_loader)\n\n    print(\n        f\"Epoch {epoch+1} | \"\n        f\"Loss: {train_loss:.3f} | \"\n        f\"Train Acc: {train_acc:.2f}% | \"\n        f\"Test Acc: {test_acc:.2f}%\"\n    )","metadata":{"trusted":true,"execution":{"iopub.status.busy":"2025-12-18T10:48:34.640032Z","iopub.execute_input":"2025-12-18T10:48:34.640253Z","iopub.status.idle":"2025-12-18T10:49:18.912805Z","shell.execute_reply.started":"2025-12-18T10:48:34.640233Z","shell.execute_reply":"2025-12-18T10:49:18.912187Z"}},"outputs":[{"name":"stdout","text":"Epoch 1 | Loss: 0.534 | Train Acc: 80.35% | Test Acc: 87.41%\nEpoch 2 | Loss: 0.343 | Train Acc: 87.60% | Test Acc: 89.06%\nEpoch 3 | Loss: 0.295 | Train Acc: 89.37% | Test Acc: 89.53%\nEpoch 4 | Loss: 0.260 | Train Acc: 90.46% | Test Acc: 89.94%\nEpoch 5 | Loss: 0.235 | Train Acc: 91.34% | Test Acc: 90.66%\n","output_type":"stream"}],"execution_count":31},{"cell_type":"markdown","source":"# Phase 7 — Activation Sanity Check (Pro Move)","metadata":{}},{"cell_type":"code","source":"def inspect_activation(x, name):\n    print(\n        f\"{name} | \"\n        f\"mean={x.mean():.3f}, \"\n        f\"std={x.std():.3f}, \"\n        f\"min={x.min():.3f}, \"\n        f\"max={x.max():.3f}\"\n    )","metadata":{"trusted":true,"execution":{"iopub.status.busy":"2025-12-18T10:49:32.522035Z","iopub.execute_input":"2025-12-18T10:49:32.522777Z","iopub.status.idle":"2025-12-18T10:49:32.526245Z","shell.execute_reply.started":"2025-12-18T10:49:32.522747Z","shell.execute_reply":"2025-12-18T10:49:32.525621Z"}},"outputs":[],"execution_count":34},{"cell_type":"markdown","source":"# Phase 8 — Model Inspection (Portfolio Level","metadata":{}},{"cell_type":"code","source":"total_params = sum(p.numel() for p in model.parameters())\nprint(f\"Total Parameters: {total_params:,}\")","metadata":{"trusted":true,"execution":{"iopub.status.busy":"2025-12-18T10:50:26.453932Z","iopub.execute_input":"2025-12-18T10:50:26.454671Z","iopub.status.idle":"2025-12-18T10:50:26.458738Z","shell.execute_reply.started":"2025-12-18T10:50:26.454641Z","shell.execute_reply":"2025-12-18T10:50:26.458103Z"}},"outputs":[{"name":"stdout","text":"Total Parameters: 421,642\n","output_type":"stream"}],"execution_count":35},{"cell_type":"markdown","source":"Inspect Terminal Layers","metadata":{}},{"cell_type":"code","source":"for name, module in model.named_modules():\n    if len(list(module.children())) == 0:\n        print(name, sum(p.numel() for p in module.parameters()))","metadata":{"trusted":true,"execution":{"iopub.status.busy":"2025-12-18T10:50:58.575687Z","iopub.execute_input":"2025-12-18T10:50:58.576511Z","iopub.status.idle":"2025-12-18T10:50:58.581163Z","shell.execute_reply.started":"2025-12-18T10:50:58.576478Z","shell.execute_reply":"2025-12-18T10:50:58.580424Z"}},"outputs":[{"name":"stdout","text":"conv_block.0 320\nconv_block.1 0\nconv_block.2 0\nconv_block.3 18496\nconv_block.4 0\nconv_block.5 0\nfc_block.0 401536\nfc_block.1 0\nfc_block.2 0\nfc_block.3 1290\n","output_type":"stream"}],"execution_count":36},{"cell_type":"code","source":"","metadata":{"trusted":true},"outputs":[],"execution_count":null}]}
+{
+ "cells": [
+  {
+   "cell_type": "code",
+   "execution_count": 1,
+   "id": "e154cb8c",
+   "metadata": {
+    "_cell_guid": "b1076dfc-b9ad-4769-8c92-a6c4dae69d19",
+    "_uuid": "8f2839f25d086af736a60e9eeb907d3b93b6e0e5",
+    "execution": {
+     "iopub.execute_input": "2025-12-18T10:54:06.919141Z",
+     "iopub.status.busy": "2025-12-18T10:54:06.918840Z",
+     "iopub.status.idle": "2025-12-18T10:54:07.580127Z",
+     "shell.execute_reply": "2025-12-18T10:54:07.579372Z"
+    },
+    "papermill": {
+     "duration": 0.668199,
+     "end_time": "2025-12-18T10:54:07.581647",
+     "exception": false,
+     "start_time": "2025-12-18T10:54:06.913448",
+     "status": "completed"
+    },
+    "tags": []
+   },
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "/kaggle/input/help-utilities/helper_utils2.py\n"
+     ]
+    }
+   ],
+   "source": [
+    "# This Python 3 environment comes with many helpful analytics libraries installed\n",
+    "# It is defined by the kaggle/python Docker image: https://github.com/kaggle/docker-python\n",
+    "# For example, here's several helpful packages to load\n",
+    "\n",
+    "import numpy as np # linear algebra\n",
+    "import pandas as pd # data processing, CSV file I/O (e.g. pd.read_csv)\n",
+    "\n",
+    "# Input data files are available in the read-only \"../input/\" directory\n",
+    "# For example, running this (by clicking run or pressing Shift+Enter) will list all files under the input directory\n",
+    "\n",
+    "import os\n",
+    "for dirname, _, filenames in os.walk('/kaggle/input'):\n",
+    "    for filename in filenames:\n",
+    "        print(os.path.join(dirname, filename))\n",
+    "\n",
+    "# You can write up to 20GB to the current directory (/kaggle/working/) that gets preserved as output when you create a version using \"Save & Run All\" \n",
+    "# You can also write temporary files to /kaggle/temp/, but they won't be saved outside of the current session"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "id": "d4b13e30",
+   "metadata": {
+    "papermill": {
+     "duration": 0.003382,
+     "end_time": "2025-12-18T10:54:07.588773",
+     "exception": false,
+     "start_time": "2025-12-18T10:54:07.585391",
+     "status": "completed"
+    },
+    "tags": []
+   },
+   "source": [
+    "# Fashion-MNIST From Scratch\n",
+    "\n",
+    "**Project Goal (Crystal Clear)**\n",
+    "\n",
+    "Build a robust CNN for Fashion-MNIST that:\n",
+    "\t\n",
+    "    •\tTrains correctly\n",
+    "\t•\tIs easy to debug\n",
+    "\t•\tHas clean modular structure\n",
+    "\t•\tProduces inspectable results\n",
+    "\t•\tCan be extended to any image datase"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "id": "26bff55b",
+   "metadata": {
+    "papermill": {
+     "duration": 0.003327,
+     "end_time": "2025-12-18T10:54:07.595317",
+     "exception": false,
+     "start_time": "2025-12-18T10:54:07.591990",
+     "status": "completed"
+    },
+    "tags": []
+   },
+   "source": [
+    "# Phase 1 — Data Sanity (Never Skip This)\n",
+    "\n",
+    "Load Datase**"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 2,
+   "id": "86fa7065",
+   "metadata": {
+    "execution": {
+     "iopub.execute_input": "2025-12-18T10:54:07.603212Z",
+     "iopub.status.busy": "2025-12-18T10:54:07.602671Z",
+     "iopub.status.idle": "2025-12-18T10:54:07.606183Z",
+     "shell.execute_reply": "2025-12-18T10:54:07.605529Z"
+    },
+    "papermill": {
+     "duration": 0.009072,
+     "end_time": "2025-12-18T10:54:07.607623",
+     "exception": false,
+     "start_time": "2025-12-18T10:54:07.598551",
+     "status": "completed"
+    },
+    "tags": []
+   },
+   "outputs": [],
+   "source": [
+    "import numpy as np\n",
+    "import sys, os"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 3,
+   "id": "e81738f4",
+   "metadata": {
+    "execution": {
+     "iopub.execute_input": "2025-12-18T10:54:07.615346Z",
+     "iopub.status.busy": "2025-12-18T10:54:07.614921Z",
+     "iopub.status.idle": "2025-12-18T10:54:07.618277Z",
+     "shell.execute_reply": "2025-12-18T10:54:07.617443Z"
+    },
+    "papermill": {
+     "duration": 0.008654,
+     "end_time": "2025-12-18T10:54:07.619593",
+     "exception": false,
+     "start_time": "2025-12-18T10:54:07.610939",
+     "status": "completed"
+    },
+    "tags": []
+   },
+   "outputs": [],
+   "source": [
+    "import sys\n",
+    "sys.path.append('/kaggle/input/help-utilities')"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 4,
+   "id": "219396d7",
+   "metadata": {
+    "execution": {
+     "iopub.execute_input": "2025-12-18T10:54:07.627237Z",
+     "iopub.status.busy": "2025-12-18T10:54:07.626794Z",
+     "iopub.status.idle": "2025-12-18T10:54:21.348408Z",
+     "shell.execute_reply": "2025-12-18T10:54:21.347640Z"
+    },
+    "papermill": {
+     "duration": 13.727234,
+     "end_time": "2025-12-18T10:54:21.350021",
+     "exception": false,
+     "start_time": "2025-12-18T10:54:07.622787",
+     "status": "completed"
+    },
+    "tags": []
+   },
+   "outputs": [
+    {
+     "name": "stderr",
+     "output_type": "stream",
+     "text": [
+      "100%|██████████| 26.4M/26.4M [00:01<00:00, 20.3MB/s]\n",
+      "100%|██████████| 29.5k/29.5k [00:00<00:00, 305kB/s]\n",
+      "100%|██████████| 4.42M/4.42M [00:00<00:00, 4.97MB/s]\n",
+      "100%|██████████| 5.15k/5.15k [00:00<00:00, 13.7MB/s]\n"
+     ]
+    }
+   ],
+   "source": [
+    "import torch\n",
+    "from torchvision import datasets, transforms\n",
+    "from torch.utils.data import DataLoader\n",
+    "\n",
+    "import helper_utils2\n",
+    "\n",
+    "transform = transforms.ToTensor()\n",
+    "\n",
+    "train_dataset = datasets.FashionMNIST(\n",
+    "    root=\"data\",\n",
+    "    train=True,\n",
+    "    download=True,\n",
+    "    transform=transform\n",
+    ")\n",
+    "\n",
+    "test_dataset = datasets.FashionMNIST(\n",
+    "    root=\"data\",\n",
+    "    train=False,\n",
+    "    download=True,\n",
+    "    transform=transform\n",
+    ")"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "id": "4936a403",
+   "metadata": {
+    "papermill": {
+     "duration": 0.004462,
+     "end_time": "2025-12-18T10:54:21.359275",
+     "exception": false,
+     "start_time": "2025-12-18T10:54:21.354813",
+     "status": "completed"
+    },
+    "tags": []
+   },
+   "source": [
+    "**DataLoader**"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 5,
+   "id": "d2a15c78",
+   "metadata": {
+    "execution": {
+     "iopub.execute_input": "2025-12-18T10:54:21.369169Z",
+     "iopub.status.busy": "2025-12-18T10:54:21.368568Z",
+     "iopub.status.idle": "2025-12-18T10:54:21.372738Z",
+     "shell.execute_reply": "2025-12-18T10:54:21.372023Z"
+    },
+    "papermill": {
+     "duration": 0.010733,
+     "end_time": "2025-12-18T10:54:21.374139",
+     "exception": false,
+     "start_time": "2025-12-18T10:54:21.363406",
+     "status": "completed"
+    },
+    "tags": []
+   },
+   "outputs": [],
+   "source": [
+    "batch_size = 64\n",
+    "\n",
+    "train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)\n",
+    "test_loader  = DataLoader(test_dataset,  batch_size=batch_size, shuffle=False)"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "id": "93f4f044",
+   "metadata": {
+    "papermill": {
+     "duration": 0.004925,
+     "end_time": "2025-12-18T10:54:21.383415",
+     "exception": false,
+     "start_time": "2025-12-18T10:54:21.378490",
+     "status": "completed"
+    },
+    "tags": []
+   },
+   "source": [
+    "Immediate Sanity Check "
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 6,
+   "id": "4e421d1d",
+   "metadata": {
+    "execution": {
+     "iopub.execute_input": "2025-12-18T10:54:21.392996Z",
+     "iopub.status.busy": "2025-12-18T10:54:21.392466Z",
+     "iopub.status.idle": "2025-12-18T10:54:21.424892Z",
+     "shell.execute_reply": "2025-12-18T10:54:21.424277Z"
+    },
+    "papermill": {
+     "duration": 0.03863,
+     "end_time": "2025-12-18T10:54:21.426226",
+     "exception": false,
+     "start_time": "2025-12-18T10:54:21.387596",
+     "status": "completed"
+    },
+    "tags": []
+   },
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "torch.Size([64, 1, 28, 28]) torch.Size([64])\n"
+     ]
+    }
+   ],
+   "source": [
+    "imgs, labels = next(iter(train_loader))\n",
+    "print(imgs.shape, labels.shape)"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "id": "aa762cd8",
+   "metadata": {
+    "papermill": {
+     "duration": 0.004147,
+     "end_time": "2025-12-18T10:54:21.434752",
+     "exception": false,
+     "start_time": "2025-12-18T10:54:21.430605",
+     "status": "completed"
+    },
+    "tags": []
+   },
+   "source": [
+    "# Phase 2 — Build the Model (Modular First)\n",
+    "\n",
+    "**CNN Architectur**"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 7,
+   "id": "e3488467",
+   "metadata": {
+    "execution": {
+     "iopub.execute_input": "2025-12-18T10:54:21.444608Z",
+     "iopub.status.busy": "2025-12-18T10:54:21.443961Z",
+     "iopub.status.idle": "2025-12-18T10:54:21.449307Z",
+     "shell.execute_reply": "2025-12-18T10:54:21.448808Z"
+    },
+    "papermill": {
+     "duration": 0.01167,
+     "end_time": "2025-12-18T10:54:21.450621",
+     "exception": false,
+     "start_time": "2025-12-18T10:54:21.438951",
+     "status": "completed"
+    },
+    "tags": []
+   },
+   "outputs": [],
+   "source": [
+    "import torch.nn as nn\n",
+    "\n",
+    "class FashionCNN(nn.Module):\n",
+    "    def __init__(self):\n",
+    "        super().__init__()\n",
+    "\n",
+    "        self.conv_block = nn.Sequential(\n",
+    "            nn.Conv2d(1, 32, kernel_size=3, padding=1),\n",
+    "            nn.ReLU(),\n",
+    "            nn.MaxPool2d(2),\n",
+    "\n",
+    "            nn.Conv2d(32, 64, kernel_size=3, padding=1),\n",
+    "            nn.ReLU(),\n",
+    "            nn.MaxPool2d(2)\n",
+    "        )\n",
+    "\n",
+    "        self.fc_block = nn.Sequential(\n",
+    "            nn.Linear(64 * 7 * 7, 128),\n",
+    "            nn.ReLU(),\n",
+    "            nn.Dropout(0.3),\n",
+    "            nn.Linear(128, 10)\n",
+    "        )\n",
+    "\n",
+    "    def forward(self, x):\n",
+    "        x = self.conv_block(x)\n",
+    "        x = torch.flatten(x, start_dim=1)\n",
+    "        x = self.fc_block(x)\n",
+    "        return x"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "id": "0e17ecd6",
+   "metadata": {
+    "papermill": {
+     "duration": 0.004073,
+     "end_time": "2025-12-18T10:54:21.458903",
+     "exception": false,
+     "start_time": "2025-12-18T10:54:21.454830",
+     "status": "completed"
+    },
+    "tags": []
+   },
+   "source": [
+    "Phase 3 — Debug the Forward Pass (ON PURPOSE)"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 8,
+   "id": "11fc8eff",
+   "metadata": {
+    "execution": {
+     "iopub.execute_input": "2025-12-18T10:54:21.468373Z",
+     "iopub.status.busy": "2025-12-18T10:54:21.467911Z",
+     "iopub.status.idle": "2025-12-18T10:54:21.472019Z",
+     "shell.execute_reply": "2025-12-18T10:54:21.471283Z"
+    },
+    "papermill": {
+     "duration": 0.010177,
+     "end_time": "2025-12-18T10:54:21.473253",
+     "exception": false,
+     "start_time": "2025-12-18T10:54:21.463076",
+     "status": "completed"
+    },
+    "tags": []
+   },
+   "outputs": [],
+   "source": [
+    "class DebugFashionCNN(FashionCNN):\n",
+    "    def forward(self, x):\n",
+    "        print(\"Input:\", x.shape)\n",
+    "\n",
+    "        x = self.conv_block(x)\n",
+    "        print(\"After conv_block:\", x.shape)\n",
+    "\n",
+    "        x = torch.flatten(x, 1)\n",
+    "        print(\"After flatten:\", x.shape)\n",
+    "\n",
+    "        x = self.fc_block(x)\n",
+    "        print(\"Output:\", x.shape)\n",
+    "\n",
+    "        return x"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 9,
+   "id": "72ba54af",
+   "metadata": {
+    "execution": {
+     "iopub.execute_input": "2025-12-18T10:54:21.482941Z",
+     "iopub.status.busy": "2025-12-18T10:54:21.482554Z",
+     "iopub.status.idle": "2025-12-18T10:54:21.603262Z",
+     "shell.execute_reply": "2025-12-18T10:54:21.602537Z"
+    },
+    "papermill": {
+     "duration": 0.127166,
+     "end_time": "2025-12-18T10:54:21.604636",
+     "exception": false,
+     "start_time": "2025-12-18T10:54:21.477470",
+     "status": "completed"
+    },
+    "tags": []
+   },
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "Input: torch.Size([64, 1, 28, 28])\n",
+      "After conv_block: torch.Size([64, 64, 7, 7])\n",
+      "After flatten: torch.Size([64, 3136])\n",
+      "Output: torch.Size([64, 10])\n"
+     ]
+    },
+    {
+     "data": {
+      "text/plain": [
+       "tensor([[-3.2541e-02, -4.9648e-02, -5.4300e-02, -6.1434e-02,  7.3257e-02,\n",
+       "         -4.9700e-02,  3.9039e-03, -2.9331e-02, -3.3578e-02, -4.4760e-02],\n",
+       "        [-5.3734e-02, -5.1581e-02,  1.5219e-02, -1.5098e-03,  8.9435e-02,\n",
+       "         -5.0160e-02,  3.0459e-02,  4.9222e-02, -7.8785e-03, -1.2123e-01],\n",
+       "        [ 6.3321e-02, -2.9108e-02,  1.2427e-02, -3.0362e-02,  8.4563e-02,\n",
+       "         -2.8322e-02,  1.1406e-01,  5.9717e-02, -2.3233e-02, -3.7952e-02],\n",
+       "        [ 6.6338e-03, -2.4909e-02, -1.2101e-02, -2.3014e-02,  6.7252e-02,\n",
+       "         -5.8410e-02,  2.9082e-02,  1.1243e-02, -1.5566e-02, -4.9148e-02],\n",
+       "        [-4.9225e-02,  1.3202e-02,  4.1651e-03, -2.2556e-02,  3.5386e-02,\n",
+       "         -7.6631e-02, -8.9949e-03,  5.4231e-02, -4.0270e-02, -5.4188e-02],\n",
+       "        [ 9.8605e-03, -8.6811e-02, -1.6725e-02, -2.1017e-02,  4.8843e-02,\n",
+       "         -1.2161e-02,  3.8908e-02,  2.6921e-03, -3.3524e-02, -8.6134e-02],\n",
+       "        [-2.8224e-02, -2.7071e-02, -3.7415e-02,  7.9749e-03,  7.0583e-02,\n",
+       "         -4.3445e-02,  6.4886e-03,  1.9668e-02, -7.0100e-02, -5.1086e-02],\n",
+       "        [-3.9859e-02, -9.6347e-03, -2.8740e-03,  1.6004e-02,  6.6057e-02,\n",
+       "         -8.2106e-02,  5.7529e-03,  2.0857e-02, -7.5081e-02, -3.6943e-02],\n",
+       "        [-6.1705e-03, -4.2569e-02, -7.6219e-02, -8.3841e-03,  4.2177e-02,\n",
+       "         -5.7411e-02,  1.2262e-02, -9.4345e-03,  2.7836e-02, -4.9182e-02],\n",
+       "        [-7.1541e-03, -2.9450e-02,  3.8729e-03,  4.2612e-02,  5.8218e-02,\n",
+       "         -5.1516e-02,  3.0816e-02,  3.1599e-02, -1.6154e-02, -2.1817e-02],\n",
+       "        [-5.7730e-02, -4.0660e-02,  9.1320e-03,  1.1854e-02,  6.0341e-02,\n",
+       "         -7.3461e-03, -8.4584e-03,  5.6385e-02,  3.1901e-03, -1.2483e-01],\n",
+       "        [ 3.4631e-02, -4.2104e-02,  3.0795e-03, -3.9131e-02,  6.9507e-02,\n",
+       "         -5.0445e-02,  2.4634e-02,  8.2276e-03, -7.9131e-02, -2.2055e-02],\n",
+       "        [-8.1407e-03, -2.6053e-02, -2.3163e-02, -2.4547e-02,  6.3479e-02,\n",
+       "         -4.0933e-02, -8.7623e-03, -6.7061e-03, -5.9796e-02, -4.2959e-02],\n",
+       "        [-1.3248e-02, -3.9578e-02, -3.1368e-02, -8.1407e-04,  6.1350e-02,\n",
+       "         -4.7500e-02, -2.3166e-02,  1.2634e-03, -6.1342e-02, -4.3205e-02],\n",
+       "        [ 4.2794e-02, -6.5822e-02, -1.9722e-03, -2.5044e-02,  3.2021e-02,\n",
+       "         -6.3420e-02, -3.7796e-03,  2.0202e-02, -7.5575e-02, -2.8974e-02],\n",
+       "        [ 6.0029e-03, -1.6734e-02,  9.7943e-03,  1.8345e-02,  6.6246e-02,\n",
+       "         -2.8378e-02,  8.9478e-03,  5.6682e-02, -8.2114e-03, -7.0133e-02],\n",
+       "        [-1.3820e-02, -1.3158e-02,  7.4380e-03, -1.1369e-04,  7.8041e-02,\n",
+       "         -6.1399e-02,  9.3216e-03,  7.4542e-02, -2.7927e-02, -5.1391e-02],\n",
+       "        [-6.9998e-02, -1.6177e-02, -1.0984e-02, -4.3315e-02,  7.2402e-02,\n",
+       "         -1.2263e-02, -4.3670e-02,  5.8825e-02, -3.7614e-02, -7.8697e-02],\n",
+       "        [ 7.4635e-03, -3.6438e-02, -4.6273e-02, -9.3988e-02,  1.2484e-01,\n",
+       "         -3.7055e-02,  3.4662e-02,  6.5592e-03, -1.6332e-02, -3.4054e-02],\n",
+       "        [ 2.9242e-02, -7.3276e-02, -1.4139e-02, -3.8921e-02,  8.3658e-02,\n",
+       "         -4.2790e-02,  4.1386e-02, -2.9814e-03, -3.4068e-02, -2.3946e-02],\n",
+       "        [ 1.9673e-02, -2.4204e-02, -3.0833e-02, -6.6854e-02,  1.3021e-01,\n",
+       "         -3.3457e-02,  7.4880e-04,  5.0957e-03, -6.1600e-02, -3.3054e-02],\n",
+       "        [-9.0043e-03,  5.5251e-03,  2.0825e-02,  3.1509e-02,  6.2565e-02,\n",
+       "         -6.4735e-02,  2.7275e-02,  8.4348e-02, -2.1408e-02, -6.2962e-02],\n",
+       "        [-4.1732e-04, -1.3142e-02, -3.7860e-02,  7.0984e-03,  6.2563e-02,\n",
+       "         -3.6999e-02,  1.4628e-02,  4.1049e-03, -4.8442e-02, -4.2772e-02],\n",
+       "        [-2.6105e-02, -4.0327e-02,  4.9819e-03, -1.2753e-02,  5.7825e-02,\n",
+       "         -3.2437e-02,  3.5372e-02,  3.6931e-02, -2.8630e-02, -5.3568e-02],\n",
+       "        [-2.5046e-02, -1.0222e-01, -4.1429e-02, -1.1524e-02,  4.9489e-02,\n",
+       "         -2.0491e-02,  1.4754e-04,  2.1468e-02, -2.8836e-02, -5.4901e-02],\n",
+       "        [ 1.2047e-02, -9.0880e-02,  5.9985e-02, -4.8553e-03,  8.1451e-02,\n",
+       "         -8.7389e-02,  2.2239e-02,  6.1814e-02, -2.7714e-02, -5.2702e-02],\n",
+       "        [ 9.2128e-03, -2.8431e-02, -5.0089e-02, -3.4171e-02,  1.0209e-01,\n",
+       "         -5.7613e-02,  5.7136e-02,  3.5360e-02, -1.4816e-02, -6.0125e-02],\n",
+       "        [-1.5870e-02, -5.0951e-02, -6.8566e-02, -4.3904e-02,  4.5625e-02,\n",
+       "         -8.5681e-02,  1.2441e-02, -6.3333e-03, -2.4722e-02, -9.1285e-02],\n",
+       "        [ 5.3189e-02, -1.4615e-03, -2.7308e-02,  6.1280e-03,  2.2353e-02,\n",
+       "         -1.3995e-02,  6.3134e-03,  7.0779e-02, -1.5692e-02, -6.6747e-02],\n",
+       "        [-3.4992e-02,  1.5556e-04, -4.8965e-02, -1.6966e-03,  6.3305e-02,\n",
+       "         -7.2997e-02, -2.8060e-02,  1.7453e-02, -4.1269e-02, -4.4965e-02],\n",
+       "        [ 6.0283e-03, -9.3977e-03, -3.8709e-02, -6.5585e-03,  8.2534e-02,\n",
+       "         -7.3361e-02,  3.5411e-02,  1.6354e-02,  1.0070e-02, -4.5667e-02],\n",
+       "        [ 2.0039e-02, -8.6693e-02, -1.3669e-02, -2.9189e-02,  6.5723e-02,\n",
+       "         -5.1990e-02, -1.3427e-02, -7.5211e-03, -2.7465e-02, -7.1245e-02],\n",
+       "        [-6.9751e-02,  1.8220e-02,  2.4636e-03, -6.8589e-03,  2.9314e-02,\n",
+       "         -3.2416e-02,  2.2147e-03,  8.9720e-02, -3.3841e-02, -8.4583e-02],\n",
+       "        [-9.2163e-04, -2.9346e-02,  1.6262e-02,  1.9153e-03,  3.8446e-02,\n",
+       "         -2.0071e-02,  2.3204e-03,  5.6955e-02, -4.5838e-02, -8.5403e-02],\n",
+       "        [-3.4397e-02, -7.5197e-02,  3.0353e-02,  2.6875e-02,  2.0729e-02,\n",
+       "         -1.6186e-02,  1.0193e-02,  3.4216e-03, -2.5255e-02, -7.8214e-02],\n",
+       "        [ 9.0472e-04, -1.8136e-02, -2.6516e-02,  5.3282e-03,  3.5685e-02,\n",
+       "         -4.1830e-02, -2.9969e-02, -3.3679e-03, -3.6767e-02, -4.6325e-03],\n",
+       "        [ 1.8824e-02, -5.1853e-02, -1.9498e-02, -2.9924e-02,  7.2700e-02,\n",
+       "         -4.5278e-02,  2.3865e-02,  1.8242e-02, -5.8254e-02, -6.6338e-02],\n",
+       "        [ 8.6637e-02, -7.5927e-02,  2.1685e-02, -3.8178e-02,  9.8141e-02,\n",
+       "         -2.0386e-03,  8.0017e-02,  5.6928e-02, -4.4251e-02, -5.5478e-02],\n",
+       "        [-4.9394e-02, -5.5581e-02, -1.0663e-02,  1.7849e-02,  9.8880e-02,\n",
+       "         -2.5753e-02,  1.5681e-03,  2.9233e-03, -2.5774e-02, -5.3207e-02],\n",
+       "        [ 2.1182e-02, -7.5020e-03, -2.9228e-02, -8.2987e-02,  7.8538e-02,\n",
+       "         -4.8231e-02,  1.5823e-02,  6.5262e-02, -4.5292e-02, -6.7734e-02],\n",
+       "        [ 1.4012e-02, -1.9412e-02, -1.7008e-02, -4.9216e-02,  1.0213e-01,\n",
+       "         -4.8963e-02,  2.9157e-02,  5.6979e-02, -1.1218e-02, -6.5845e-02],\n",
+       "        [-1.7693e-02, -2.9525e-02, -3.4147e-02,  1.7292e-02,  4.7331e-02,\n",
+       "         -5.8017e-02, -2.8776e-02, -9.9922e-04, -2.3950e-02, -8.4108e-03],\n",
+       "        [-7.1307e-02, -4.7650e-02, -1.8213e-02, -7.6968e-02,  1.1753e-01,\n",
+       "         -5.8893e-02, -1.0897e-03,  5.9699e-02,  2.2011e-02, -7.4683e-02],\n",
+       "        [ 6.4301e-02, -2.4915e-02,  2.5296e-02, -4.4941e-02,  6.9245e-02,\n",
+       "         -6.3439e-02,  4.6039e-02,  6.3406e-02, -3.9930e-02, -1.3513e-02],\n",
+       "        [ 2.8734e-02, -6.1355e-02, -4.2330e-02, -1.8846e-02,  5.7632e-02,\n",
+       "         -1.3645e-02,  3.3925e-02, -1.5570e-02, -8.2416e-02, -5.9718e-03],\n",
+       "        [-1.1918e-02, -5.0261e-02,  2.4076e-02, -4.3042e-02,  8.4101e-02,\n",
+       "         -2.8738e-02,  1.6407e-02,  2.4212e-02, -5.1566e-02, -6.0657e-02],\n",
+       "        [-3.1346e-02, -6.1822e-02,  1.3225e-02, -1.7501e-02,  7.0908e-02,\n",
+       "         -4.8410e-02,  1.1877e-02,  3.7863e-02, -9.6186e-03, -7.4660e-02],\n",
+       "        [ 7.7061e-02, -8.1774e-02, -2.0047e-02, -5.0226e-02,  5.7932e-02,\n",
+       "         -8.8343e-03,  6.3572e-02,  5.4486e-02, -2.1671e-02, -3.8234e-02],\n",
+       "        [-2.6992e-02, -3.7858e-02, -1.2349e-02,  9.8883e-03,  7.0459e-02,\n",
+       "         -2.1873e-02, -8.6105e-03,  4.2396e-02, -3.8072e-02, -5.7181e-02],\n",
+       "        [-3.1984e-02, -2.1076e-02, -3.1087e-02,  6.3409e-04,  6.6727e-02,\n",
+       "         -5.1795e-02,  5.4271e-03,  2.1127e-02, -1.9432e-02, -4.9995e-02],\n",
+       "        [ 7.8439e-03, -4.2866e-02, -4.1927e-02, -3.6102e-02,  4.8177e-02,\n",
+       "         -5.4507e-02,  6.0207e-02,  4.3428e-02, -5.6842e-02, -4.9574e-02],\n",
+       "        [ 2.6802e-02, -1.0821e-01,  4.1802e-02,  1.3088e-02,  9.5188e-02,\n",
+       "         -5.0606e-02,  2.4143e-02,  4.0020e-02, -6.1897e-03, -2.8909e-02],\n",
+       "        [-1.6084e-02, -7.1544e-02, -1.6809e-03, -3.4296e-02,  5.4748e-02,\n",
+       "         -4.2894e-02,  2.2865e-02,  9.8250e-03, -4.8236e-02, -4.5096e-02],\n",
+       "        [-5.8129e-03, -7.4381e-02,  3.3709e-02, -3.6945e-02,  8.2637e-02,\n",
+       "         -2.0323e-02,  2.3143e-02,  1.4292e-02, -5.0283e-02, -5.6668e-02],\n",
+       "        [-2.8908e-02, -7.1270e-02, -7.8779e-03, -2.8751e-02,  8.1250e-02,\n",
+       "         -5.8466e-02,  4.0007e-02,  2.6163e-02, -2.2889e-02, -7.9423e-02],\n",
+       "        [ 1.4189e-02, -2.3971e-02,  2.6571e-02, -1.7332e-02,  9.3425e-02,\n",
+       "         -1.4999e-02, -1.6171e-02,  4.5562e-02, -6.6500e-02, -3.4243e-02],\n",
+       "        [ 1.6309e-02, -2.5265e-03, -1.0366e-02, -7.5574e-02,  9.0221e-02,\n",
+       "         -4.5910e-02,  2.8806e-02,  6.8457e-02, -1.8148e-02, -6.6846e-02],\n",
+       "        [ 5.8051e-03, -4.8251e-02, -4.0383e-02, -4.7377e-02,  4.9946e-02,\n",
+       "         -6.6447e-02,  2.6163e-03, -4.6066e-02, -1.1878e-02, -4.2142e-02],\n",
+       "        [-6.5188e-02, -8.3524e-02,  1.1632e-03, -2.6772e-02,  7.0937e-02,\n",
+       "         -9.7919e-03,  2.0939e-02,  4.9489e-02, -4.5348e-02, -5.5935e-02],\n",
+       "        [-5.6910e-02, -4.7301e-02, -6.5237e-04, -3.8153e-03,  4.7430e-02,\n",
+       "         -5.8169e-02,  4.9783e-03,  5.8821e-02,  6.9037e-03, -5.4015e-02],\n",
+       "        [ 7.1967e-02, -6.3613e-04, -3.0208e-02, -7.3044e-02,  7.5588e-02,\n",
+       "         -3.5957e-02,  9.5447e-02,  2.0635e-02, -3.9915e-02, -1.2552e-02],\n",
+       "        [ 4.0269e-03, -9.2011e-02,  1.0497e-02, -5.2667e-02,  9.0425e-02,\n",
+       "         -1.5715e-02,  3.6703e-02,  3.1610e-02, -6.3253e-02, -6.9640e-02],\n",
+       "        [ 5.0223e-03, -3.7577e-02,  2.1942e-02,  8.3285e-03,  2.8624e-02,\n",
+       "         -4.3746e-02, -8.0205e-03,  5.5565e-02, -4.1589e-02, -4.5703e-02],\n",
+       "        [-2.1552e-03, -3.6527e-02, -2.1753e-02, -1.8567e-03,  9.5126e-02,\n",
+       "         -2.3461e-02,  2.5322e-02,  5.5824e-02, -4.0920e-02, -4.3107e-02]],\n",
+       "       grad_fn=<AddmmBackward0>)"
+      ]
+     },
+     "execution_count": 9,
+     "metadata": {},
+     "output_type": "execute_result"
+    }
+   ],
+   "source": [
+    "debug_model = DebugFashionCNN()\n",
+    "debug_model(imgs)"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "id": "4fdc4b05",
+   "metadata": {
+    "papermill": {
+     "duration": 0.004547,
+     "end_time": "2025-12-18T10:54:21.613948",
+     "exception": false,
+     "start_time": "2025-12-18T10:54:21.609401",
+     "status": "completed"
+    },
+    "tags": []
+   },
+   "source": [
+    "# Phase 4 — Training Loop (Clean & Explicit\n",
+    "\n",
+    "* Setup"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 10,
+   "id": "4b976531",
+   "metadata": {
+    "execution": {
+     "iopub.execute_input": "2025-12-18T10:54:21.624064Z",
+     "iopub.status.busy": "2025-12-18T10:54:21.623841Z",
+     "iopub.status.idle": "2025-12-18T10:54:21.840563Z",
+     "shell.execute_reply": "2025-12-18T10:54:21.839935Z"
+    },
+    "papermill": {
+     "duration": 0.223755,
+     "end_time": "2025-12-18T10:54:21.842222",
+     "exception": false,
+     "start_time": "2025-12-18T10:54:21.618467",
+     "status": "completed"
+    },
+    "tags": []
+   },
+   "outputs": [],
+   "source": [
+    "device = torch.device(\"cuda\" if torch.cuda.is_available() else \"cpu\")\n",
+    "\n",
+    "model = FashionCNN().to(device)\n",
+    "criterion = nn.CrossEntropyLoss()\n",
+    "optimizer = torch.optim.Adam(model.parameters(), lr=0.001)"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "id": "5da785e5",
+   "metadata": {
+    "papermill": {
+     "duration": 0.006237,
+     "end_time": "2025-12-18T10:54:21.853419",
+     "exception": false,
+     "start_time": "2025-12-18T10:54:21.847182",
+     "status": "completed"
+    },
+    "tags": []
+   },
+   "source": [
+    "**Training Functio**"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 11,
+   "id": "18cffae0",
+   "metadata": {
+    "execution": {
+     "iopub.execute_input": "2025-12-18T10:54:21.864712Z",
+     "iopub.status.busy": "2025-12-18T10:54:21.864422Z",
+     "iopub.status.idle": "2025-12-18T10:54:21.869796Z",
+     "shell.execute_reply": "2025-12-18T10:54:21.868810Z"
+    },
+    "papermill": {
+     "duration": 0.012339,
+     "end_time": "2025-12-18T10:54:21.871202",
+     "exception": false,
+     "start_time": "2025-12-18T10:54:21.858863",
+     "status": "completed"
+    },
+    "tags": []
+   },
+   "outputs": [],
+   "source": [
+    "def train_epoch(model, loader):\n",
+    "    model.train()\n",
+    "    total_loss = 0\n",
+    "    correct = 0\n",
+    "    total = 0\n",
+    "\n",
+    "    for imgs, labels in loader:\n",
+    "        imgs, labels = imgs.to(device), labels.to(device)\n",
+    "\n",
+    "        optimizer.zero_grad()\n",
+    "        outputs = model(imgs)\n",
+    "        loss = criterion(outputs, labels)\n",
+    "        loss.backward()\n",
+    "        optimizer.step()\n",
+    "\n",
+    "        total_loss += loss.item()\n",
+    "        preds = outputs.argmax(dim=1)\n",
+    "        correct += (preds == labels).sum().item()\n",
+    "        total += labels.size(0)\n",
+    "\n",
+    "    return total_loss / len(loader), 100 * correct / total"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "id": "04369fed",
+   "metadata": {
+    "papermill": {
+     "duration": 0.004495,
+     "end_time": "2025-12-18T10:54:21.880153",
+     "exception": false,
+     "start_time": "2025-12-18T10:54:21.875658",
+     "status": "completed"
+    },
+    "tags": []
+   },
+   "source": [
+    "# Phase 5 — Evaluation (NO GRADIENTS)"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 12,
+   "id": "8a4e5f9a",
+   "metadata": {
+    "execution": {
+     "iopub.execute_input": "2025-12-18T10:54:21.890062Z",
+     "iopub.status.busy": "2025-12-18T10:54:21.889829Z",
+     "iopub.status.idle": "2025-12-18T10:54:21.894293Z",
+     "shell.execute_reply": "2025-12-18T10:54:21.893660Z"
+    },
+    "papermill": {
+     "duration": 0.01106,
+     "end_time": "2025-12-18T10:54:21.895604",
+     "exception": false,
+     "start_time": "2025-12-18T10:54:21.884544",
+     "status": "completed"
+    },
+    "tags": []
+   },
+   "outputs": [],
+   "source": [
+    "def evaluate(model, loader):\n",
+    "    model.eval()\n",
+    "    correct = 0\n",
+    "    total = 0\n",
+    "\n",
+    "    with torch.no_grad():\n",
+    "        for imgs, labels in loader:\n",
+    "            imgs, labels = imgs.to(device), labels.to(device)\n",
+    "            outputs = model(imgs)\n",
+    "            preds = outputs.argmax(dim=1)\n",
+    "            correct += (preds == labels).sum().item()\n",
+    "            total += labels.size(0)\n",
+    "\n",
+    "    return 100 * correct / total"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "id": "9139fd04",
+   "metadata": {
+    "papermill": {
+     "duration": 0.004387,
+     "end_time": "2025-12-18T10:54:21.904934",
+     "exception": false,
+     "start_time": "2025-12-18T10:54:21.900547",
+     "status": "completed"
+    },
+    "tags": []
+   },
+   "source": [
+    "# Phase 6 — Train & Observe Like an Engineer"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 13,
+   "id": "18fe74dd",
+   "metadata": {
+    "execution": {
+     "iopub.execute_input": "2025-12-18T10:54:21.916770Z",
+     "iopub.status.busy": "2025-12-18T10:54:21.916304Z",
+     "iopub.status.idle": "2025-12-18T10:55:08.059528Z",
+     "shell.execute_reply": "2025-12-18T10:55:08.058690Z"
+    },
+    "papermill": {
+     "duration": 46.149902,
+     "end_time": "2025-12-18T10:55:08.060967",
+     "exception": false,
+     "start_time": "2025-12-18T10:54:21.911065",
+     "status": "completed"
+    },
+    "tags": []
+   },
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "Epoch 1 | Loss: 0.519 | Train Acc: 81.08% | Test Acc: 86.80%\n",
+      "Epoch 2 | Loss: 0.333 | Train Acc: 87.83% | Test Acc: 89.18%\n",
+      "Epoch 3 | Loss: 0.286 | Train Acc: 89.47% | Test Acc: 89.44%\n",
+      "Epoch 4 | Loss: 0.259 | Train Acc: 90.51% | Test Acc: 90.52%\n",
+      "Epoch 5 | Loss: 0.232 | Train Acc: 91.61% | Test Acc: 90.81%\n"
+     ]
+    }
+   ],
+   "source": [
+    "epochs = 5\n",
+    "\n",
+    "for epoch in range(epochs):\n",
+    "    train_loss, train_acc = train_epoch(model, train_loader)\n",
+    "    test_acc = evaluate(model, test_loader)\n",
+    "\n",
+    "    print(\n",
+    "        f\"Epoch {epoch+1} | \"\n",
+    "        f\"Loss: {train_loss:.3f} | \"\n",
+    "        f\"Train Acc: {train_acc:.2f}% | \"\n",
+    "        f\"Test Acc: {test_acc:.2f}%\"\n",
+    "    )"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "id": "5a668e59",
+   "metadata": {
+    "papermill": {
+     "duration": 0.004739,
+     "end_time": "2025-12-18T10:55:08.070708",
+     "exception": false,
+     "start_time": "2025-12-18T10:55:08.065969",
+     "status": "completed"
+    },
+    "tags": []
+   },
+   "source": [
+    "# Phase 7 — Activation Sanity Check (Pro Move)"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 14,
+   "id": "f60d662c",
+   "metadata": {
+    "execution": {
+     "iopub.execute_input": "2025-12-18T10:55:08.081537Z",
+     "iopub.status.busy": "2025-12-18T10:55:08.080917Z",
+     "iopub.status.idle": "2025-12-18T10:55:08.084697Z",
+     "shell.execute_reply": "2025-12-18T10:55:08.083990Z"
+    },
+    "papermill": {
+     "duration": 0.01052,
+     "end_time": "2025-12-18T10:55:08.086095",
+     "exception": false,
+     "start_time": "2025-12-18T10:55:08.075575",
+     "status": "completed"
+    },
+    "tags": []
+   },
+   "outputs": [],
+   "source": [
+    "def inspect_activation(x, name):\n",
+    "    print(\n",
+    "        f\"{name} | \"\n",
+    "        f\"mean={x.mean():.3f}, \"\n",
+    "        f\"std={x.std():.3f}, \"\n",
+    "        f\"min={x.min():.3f}, \"\n",
+    "        f\"max={x.max():.3f}\"\n",
+    "    )"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "id": "b3a52b74",
+   "metadata": {
+    "papermill": {
+     "duration": 0.004623,
+     "end_time": "2025-12-18T10:55:08.095342",
+     "exception": false,
+     "start_time": "2025-12-18T10:55:08.090719",
+     "status": "completed"
+    },
+    "tags": []
+   },
+   "source": [
+    "# Phase 8 — Model Inspection (Portfolio Level"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 15,
+   "id": "974e26a0",
+   "metadata": {
+    "execution": {
+     "iopub.execute_input": "2025-12-18T10:55:08.105724Z",
+     "iopub.status.busy": "2025-12-18T10:55:08.105156Z",
+     "iopub.status.idle": "2025-12-18T10:55:08.109157Z",
+     "shell.execute_reply": "2025-12-18T10:55:08.108534Z"
+    },
+    "papermill": {
+     "duration": 0.010746,
+     "end_time": "2025-12-18T10:55:08.110588",
+     "exception": false,
+     "start_time": "2025-12-18T10:55:08.099842",
+     "status": "completed"
+    },
+    "tags": []
+   },
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "Total Parameters: 421,642\n"
+     ]
+    }
+   ],
+   "source": [
+    "total_params = sum(p.numel() for p in model.parameters())\n",
+    "print(f\"Total Parameters: {total_params:,}\")"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "id": "a523bd9b",
+   "metadata": {
+    "papermill": {
+     "duration": 0.004794,
+     "end_time": "2025-12-18T10:55:08.120244",
+     "exception": false,
+     "start_time": "2025-12-18T10:55:08.115450",
+     "status": "completed"
+    },
+    "tags": []
+   },
+   "source": [
+    "Inspect Terminal Layers"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 16,
+   "id": "148094a3",
+   "metadata": {
+    "execution": {
+     "iopub.execute_input": "2025-12-18T10:55:08.130722Z",
+     "iopub.status.busy": "2025-12-18T10:55:08.130464Z",
+     "iopub.status.idle": "2025-12-18T10:55:08.135052Z",
+     "shell.execute_reply": "2025-12-18T10:55:08.134288Z"
+    },
+    "papermill": {
+     "duration": 0.011525,
+     "end_time": "2025-12-18T10:55:08.136357",
+     "exception": false,
+     "start_time": "2025-12-18T10:55:08.124832",
+     "status": "completed"
+    },
+    "tags": []
+   },
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "conv_block.0 320\n",
+      "conv_block.1 0\n",
+      "conv_block.2 0\n",
+      "conv_block.3 18496\n",
+      "conv_block.4 0\n",
+      "conv_block.5 0\n",
+      "fc_block.0 401536\n",
+      "fc_block.1 0\n",
+      "fc_block.2 0\n",
+      "fc_block.3 1290\n"
+     ]
+    }
+   ],
+   "source": [
+    "for name, module in model.named_modules():\n",
+    "    if len(list(module.children())) == 0:\n",
+    "        print(name, sum(p.numel() for p in module.parameters()))"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "id": "c3e8cab6",
+   "metadata": {
+    "papermill": {
+     "duration": 0.004788,
+     "end_time": "2025-12-18T10:55:08.145896",
+     "exception": false,
+     "start_time": "2025-12-18T10:55:08.141108",
+     "status": "completed"
+    },
+    "tags": []
+   },
+   "outputs": [],
+   "source": []
+  }
+ ],
+ "metadata": {
+  "kaggle": {
+   "accelerator": "gpu",
+   "dataSources": [
+    {
+     "datasetId": 9063561,
+     "sourceId": 14209643,
+     "sourceType": "datasetVersion"
+    }
+   ],
+   "dockerImageVersionId": 31236,
+   "isGpuEnabled": true,
+   "isInternetEnabled": true,
+   "language": "python",
+   "sourceType": "notebook"
+  },
+  "kernelspec": {
+   "display_name": "Python 3",
+   "language": "python",
+   "name": "python3"
+  },
+  "language_info": {
+   "codemirror_mode": {
+    "name": "ipython",
+    "version": 3
+   },
+   "file_extension": ".py",
+   "mimetype": "text/x-python",
+   "name": "python",
+   "nbconvert_exporter": "python",
+   "pygments_lexer": "ipython3",
+   "version": "3.12.12"
+  },
+  "papermill": {
+   "default_parameters": {},
+   "duration": 66.138256,
+   "end_time": "2025-12-18T10:55:10.488773",
+   "environment_variables": {},
+   "exception": null,
+   "input_path": "__notebook__.ipynb",
+   "output_path": "__notebook__.ipynb",
+   "parameters": {},
+   "start_time": "2025-12-18T10:54:04.350517",
+   "version": "2.6.0"
+  }
+ },
+ "nbformat": 4,
+ "nbformat_minor": 5
+}
